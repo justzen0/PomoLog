@@ -1,134 +1,136 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+// main.ts
 
-// Remember to rename these classes and interfaces!
+import { Plugin } from 'obsidian';
+import { PomoLogSettingTab } from './src/ui/SettingsTab';
+import { DEFAULT_SETTINGS, PomoLogSettings, LogEntry, TimerState } from './src/types';
+import { TimerManager } from './src/core/TimerManager';
+import { DataManager } from './src/core/DataManager';
+import { StartTimerModal } from './src/ui/StartTimerModal';
+import { TimerView, TIMER_VIEW_TYPE } from './src/ui/TimerView';
+import { SoundManager } from './src/core/SoundManager';
+import { StatsModal } from './src/ui/StatsModal';
 
-interface MyPluginSettings {
-	mySetting: string;
-}
+export default class PomoLog extends Plugin {
+    settings: PomoLogSettings;
+    timerManager: TimerManager;
+    dataManager: DataManager;
+    statusBarItemEl: HTMLElement;
+    soundManager: SoundManager;
 
-const DEFAULT_SETTINGS: MyPluginSettings = {
-	mySetting: 'default'
-}
+    async onload() {
+        await this.loadSettings();
 
-export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+        this.timerManager = new TimerManager();
+        this.dataManager = new DataManager(this.app, this.settings.logFilePath);
+        this.soundManager = new SoundManager(this); // Pass the plugin instance
+        this.soundManager.setVolume(this.settings.volume);
 
-	async onload() {
-		await this.loadSettings();
+        this.registerView(
+            TIMER_VIEW_TYPE,
+            (leaf) => new TimerView(leaf, this)
+        );
 
-		// This creates an icon in the left ribbon.
-		const ribbonIconEl = this.addRibbonIcon('dice', 'Sample Plugin', (_evt: MouseEvent) => {
-			// Called when the user clicks the icon.
-			new Notice('This is a notice!');
-		});
-		// Perform additional things with the ribbon
-		ribbonIconEl.addClass('my-plugin-ribbon-class');
+        this.statusBarItemEl = this.addStatusBarItem();
+        this.updateStatusBar();
 
-		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
-		const statusBarItemEl = this.addStatusBarItem();
-		statusBarItemEl.setText('Status Bar Text');
+        this.addRibbonIcon('tomato', 'Open PomoLog Timer', () => this.activateView());
 
-		// This adds a simple command that can be triggered anywhere
-		this.addCommand({
-			id: 'open-sample-modal-simple',
-			name: 'Open sample modal (simple)',
-			callback: () => {
-				new SampleModal(this.app).open();
-			}
-		});
-		// This adds an editor command that can perform some operation on the current editor instance
-		this.addCommand({
-			id: 'sample-editor-command',
-			name: 'Sample editor command',
-			editorCallback: (editor: Editor, _view: MarkdownView) => {
-				console.log(editor.getSelection());
-				editor.replaceSelection('Sample Editor Command');
-			}
-		});
-		// This adds a complex command that can check whether the current state of the app allows execution of the command
-		this.addCommand({
-			id: 'open-sample-modal-complex',
-			name: 'Open sample modal (complex)',
-			checkCallback: (checking: boolean) => {
-				// Conditions to check
-				const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView);
-				if (markdownView) {
-					// If checking is true, we're simply "checking" if the command can be run.
-					// If checking is false, then we want to actually perform the operation.
-					if (!checking) {
-						new SampleModal(this.app).open();
-					}
+        this.addCommand({ id: 'open-pomolog-timer-view', name: 'Open timer view', callback: () => this.activateView() });
+        this.addCommand({ id: 'start-pomolog-timer', name: 'Start a new timer session', callback: () => this.openStartTimerModal() });
+        this.addCommand({ id: 'pause-resume-pomolog-timer', name: 'Pause/Resume timer', callback: () => this.timerManager.pauseResume() });
+        this.addCommand({ id: 'stop-pomolog-timer', name: 'Stop timer', callback: () => this.timerManager.stop() });
+        this.addCommand({ id: 'show-pomolog-stats', name: 'Show statistics',
+            callback: async () => {
+                const stats = await this.dataManager.getStats();
+                new StatsModal(this.app, stats).open();
+            },
+        });
 
-					// This command will only show up in Command Palette when the check function returns true
-					return true;
-				}
-			}
-		});
+        this.addSettingTab(new PomoLogSettingTab(this.app, this));
 
-		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SampleSettingTab(this.app, this));
+        this.timerManager.on('stateChange', (state: TimerState) => {
+            this.updateStatusBar();
+            if (this.settings.enableWhiteNoise) {
+                if (state === 'pomo') {
+                    this.soundManager.playWhiteNoise(this.settings.whiteNoiseFile);
+                } else {
+                    this.soundManager.stopWhiteNoise();
+                }
+            }
+        });
 
-		// If the plugin hooks up any global DOM events (on parts of the app that doesn't belong to this plugin)
-		// Using this function will automatically remove the event listener when this plugin is disabled.
-		this.registerDomEvent(document, 'click', (evt: MouseEvent) => {
-			console.log('click', evt);
-		});
+        this.timerManager.on('tick', () => {
+            this.updateStatusBar();
+            if (this.settings.enableTicking && this.timerManager.getState().state !== 'idle') {
+                this.soundManager.playTick();
+            }
+        });
 
-		// When registering intervals, this function will automatically clear the interval when the plugin is disabled.
-		this.registerInterval(window.setInterval(() => console.log('setInterval'), 5 * 60 * 1000));
-	}
+        this.timerManager.on('phase_end', () => {
+            if (this.settings.enableCompletionSound) {
+                this.soundManager.playCompletionSound();
+            }
+        });
+        
+        this.timerManager.on('sessionEnd', (log: LogEntry) => {
+            this.dataManager.logSession(log);
+        });
+    }
 
-	onunload() {
+    async activateView() {
+        this.app.workspace.detachLeavesOfType(TIMER_VIEW_TYPE);
 
-	}
+        // --- THE FIX IS HERE ---
+        // Get the leaf, which might be null according to the types.
+        const leaf = this.app.workspace.getRightLeaf(true);
 
-	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
-	}
+        // Add the 'if' check to ensure leaf is not null before using it.
+        if (leaf) {
+            await leaf.setViewState({
+                type: TIMER_VIEW_TYPE,
+                active: true,
+            });
 
-	async saveSettings() {
-		await this.saveData(this.settings);
-	}
-}
+            this.app.workspace.revealLeaf(leaf);
+        }
+    }
 
-class SampleModal extends Modal {
-	constructor(app: App) {
-		super(app);
-	}
+    openStartTimerModal() {
+        new StartTimerModal(this.app, this.settings.presets, this.dataManager, (preset, tag) => {
+            this.soundManager.unlockAudio();
+            this.timerManager.start(preset.pomo, preset.break, tag);
+        }).open();
+    }
+    
+    updateStatusBar() {
+        if (!this.settings.showStatusBar) {
+            this.statusBarItemEl.setText('');
+            return;
+        }
+        const { state, timeLeft } = this.timerManager.getState();
+        const minutes = Math.floor(timeLeft / 60);
+        const seconds = timeLeft % 60;
+        const timeFormatted = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        let icon = '';
+        switch (state) {
+            case 'pomo': icon = '🍅 '; break;
+            case 'break': icon = '☕ '; break;
+            case 'paused': icon = '⏸️ '; break;
+            default: this.statusBarItemEl.setText('🍅 PomoLog'); return;
+        }
+        this.statusBarItemEl.setText(`${icon} ${timeFormatted}`);
+    }
 
-	onOpen() {
-		const {contentEl} = this;
-		contentEl.setText('Woah!');
-	}
+    onunload() {
+        this.timerManager.stop(false);
+    }
 
-	onClose() {
-		const {contentEl} = this;
-		contentEl.empty();
-	}
-}
+    async loadSettings() {
+        this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    }
 
-class SampleSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
-
-	constructor(app: App, plugin: MyPlugin) {
-		super(app, plugin);
-		this.plugin = plugin;
-	}
-
-	display(): void {
-		const {containerEl} = this;
-
-		containerEl.empty();
-
-		new Setting(containerEl)
-			.setName('Setting #1')
-			.setDesc('It\'s a secret')
-			.addText(text => text
-				.setPlaceholder('Enter your secret')
-				.setValue(this.plugin.settings.mySetting)
-				.onChange(async (value) => {
-					this.plugin.settings.mySetting = value;
-					await this.plugin.saveSettings();
-				}));
-	}
+    async saveSettings() {
+        await this.saveData(this.settings);
+        this.dataManager = new DataManager(this.app, this.settings.logFilePath);
+    }
 }

@@ -1,8 +1,97 @@
-/*
+/* styles.css */
 
-This CSS file will be included with your plugin, and
-available in the app when your plugin is enabled.
+.pomolog-timer-view {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    padding: 20px;
+    box-sizing: border-box;
+    /* This variable will be controlled by the plugin code */
+    --timer-color: var(--text-normal);
+}
 
-If your plugin does not need CSS, delete this file.
+/* The main gray "device" container */
+.pomolog-container {
+    background-color: var(--background-secondary);
+    border-radius: 18px;
+    padding: 16px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+    width: 100%;
+    max-width: 300px;
+}
 
-*/
+/* The inner white "screen" */
+.timer-screen {
+    background-color: var(--background-primary);
+    border: 1px solid var(--background-modifier-border);
+    border-radius: 12px;
+    padding: 20px;
+    text-align: center;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* The "SESSION" or "BREAK" label */
+.timer-label {
+    font-family: monospace;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+/* The big digital time display */
+.timer-display {
+    font-family: 'Roboto Mono', monospace; /* A good digital-style font */
+    font-size: 4rem;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--timer-color); /* Use the CSS variable for dynamic color */
+    transition: color 0.5s ease;
+}
+
+/* The container for the buttons */
+.timer-controls {
+    margin-top: 15px;
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+}
+
+/* Styling for the buttons to match the aesthetic */
+.timer-controls button {
+    flex: 1;
+    font-family: monospace;
+    font-size: 0.9rem;
+    background-color: transparent;
+    border: 1px solid var(--background-modifier-border-hover);
+    border-radius: 6px;
+    padding: 8px 16px;
+    cursor: pointer;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.timer-controls button:hover {
+    background-color: var(--background-modifier-hover);
+    color: var(--text-normal);
+}
+
+/* styles.css */
+/* ... (keep all existing styles) ... */
+
+/* Add this media query at the end */
+.is-mobile .pomolog-container {
+    padding: 8px; /* Reduce padding on smaller screens */
+    max-width: none; /* Allow it to fill the available width */
+}
+
+.is-mobile .timer-display {
+    font-size: 3.5rem; /* Slightly smaller font on mobile */
+}
+
+.is-mobile .timer-controls button {
+    padding: 10px 8px; /* Adjust padding for touch targets */
+}
