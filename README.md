@@ -11,9 +11,7 @@ A powerful Pomodoro timer and session logger built directly into Obsidian. Stay 
 -   **Visual Timer:** A clean, modern timer in the sidebar.
 -   **Automatic Logging:** Completed sessions are logged to a Markdown note.
 -   **Tag-based Tracking:** Assign tags to sessions to see where your time goes.
--   **Built-in Statistics:** Analyze your focus time for today, this week, and all-time.
 -   **Audio Cues:** Optional ticking, white noise, and completion sounds.
--   **Mobile Friendly:** Works on Obsidian Mobile.
 
 ### Installation
 
